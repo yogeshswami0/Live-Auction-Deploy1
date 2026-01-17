@@ -1,0 +1,59 @@
+.leaderboard-container {
+    max-width: 1100px;
+    margin: 40px auto;
+    padding: 20px;
+    color: #e5e7eb;
+}
+
+.leaderboard-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 25px;
+}
+
+.team-stat-card {
+    border-radius: 18px;
+    padding: 25px;
+    box-shadow: 0 14px 32px rgba(15,23,42,0.8);
+    background: radial-gradient(circle at top left, rgba(56,189,248,0.25), rgba(15,23,42,0.98));
+    border: 1px solid rgba(56,189,248,0.7);
+}
+
+.team-info h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.budget-bar-container {
+    background: rgba(15,23,42,0.9);
+    height: 10px;
+    border-radius: 5px;
+    margin: 20px 0;
+    overflow: hidden;
+}
+
+.budget-bar-fill {
+    height: 100%;
+    background: linear-gradient(to right, #27ae60, #2ecc71);
+    transition: width 0.5s ease-in-out;
+}
+
+.card-details {
+    display: flex;
+    justify-content: space-between;
+    color: #7f8c8d;
+    font-weight: 600;
+}
+
+.player-count-badge {
+    background: #e67e22;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}

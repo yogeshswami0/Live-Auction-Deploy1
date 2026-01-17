@@ -1,0 +1,174 @@
+/* ===== ROOT COLORS ===== */
+:root {
+    --primary: #4f46e5;
+    --primary-dark: #4338ca;
+    --danger: #dc2626;
+    --bg-dark: #0f172a;
+    --bg-light: #111827;
+    --text-light: #e5e7eb;
+    --text-muted: #9ca3af;
+    --border: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== HEADER ===== */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: linear-gradient(135deg, var(--bg-dark), var(--bg-light));
+    border-bottom: 1px solid var(--border);
+}
+
+/* ===== NAV CONTAINER ===== */
+.nav-shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* ===== LEFT ===== */
+.nav-left {
+    display: flex;
+    align-items: center;
+}
+
+.nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.nav-logo-mark {
+    font-size: 1.4rem;
+}
+
+.nav-logo-text {
+    letter-spacing: 0.4px;
+}
+
+/* ===== CENTER ===== */
+.nav-center {
+    display: flex;
+    gap: 24px;
+}
+
+.nav-link {
+    color: var(--text-light);
+    text-decoration: none;
+    font-size: 0.95rem;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== RIGHT ===== */
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* ===== BUTTON VARIANTS ===== */
+.nav-link-primary {
+    background: var(--primary);
+    color: #fff;
+}
+
+.nav-link-primary:hover {
+    background: var(--primary-dark);
+}
+
+.nav-link-ghost {
+    border: 1px solid var(--border);
+}
+
+.nav-link-danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.nav-link-danger:hover {
+    background: #b91c1c;
+}
+
+/* ===== PROFILE ===== */
+.nav-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 6px 10px;
+    border-radius: 999px;
+}
+
+/* ===== TEAM LOGO ===== */
+.nav-team-logo img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--border);
+}
+
+/* ===== USER AVATAR ===== */
+.nav-user-avatar {
+    width: 32px;
+    height: 32px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+/* ===== USER META ===== */
+.nav-user-meta {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+.nav-user-name {
+    font-size: 0.85rem;
+    color: #fff;
+}
+
+.nav-user-role {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+    .nav-center {
+        display: none;
+    }
+
+    .nav-user-meta {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .nav-shell {
+        padding: 0 14px;
+    }
+
+    .nav-logo-text {
+        display: none;
+    }
+}
