@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './Leaderboard.css';
+import { BACKEND_URL } from '../../config';
 
 const Leaderboard = () => {
     const [teams, setTeams] = useState([]);
@@ -9,7 +10,7 @@ const Leaderboard = () => {
     useEffect(() => {
         const fetchLeaderboard = async () => {
             try {
-                const res = await axios.get('BACKEND_URL/api/teams');
+                const res = await axios.get(`${BACKEND_URL}/api/teams`);
                 // Sort teams by remaining budget or player count
                 const sortedTeams = res.data.sort((a, b) => b.players.length - a.players.length);
                 setTeams(sortedTeams);

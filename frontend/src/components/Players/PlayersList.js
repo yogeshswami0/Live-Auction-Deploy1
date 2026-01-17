@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import './PlayersList.css';
+import { BACKEND_URL } from '../../config';
 
 const PlayersList = () => {
     const [players, setPlayers] = useState([]);
@@ -9,7 +10,7 @@ const PlayersList = () => {
     useEffect(() => {
         const fetchPlayers = async () => {
             try {
-                const res = await axios.get('BACKEND_URL/api/players');
+                const res = await axios.get(`${BACKEND_URL}/api/players`);
                 setPlayers(res.data);
                 setLoading(false);
             } catch (err) {

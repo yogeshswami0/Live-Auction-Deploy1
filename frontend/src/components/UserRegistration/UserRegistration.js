@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import './UserRegistration.css';
+import { BACKEND_URL } from '../../config';
 
 const UserRegistration = () => {
     const [formData, setFormData] = useState({
@@ -22,14 +23,14 @@ const UserRegistration = () => {
         e.preventDefault();
         try {
             // 1. Register the User
-            const userRes = await axios.post('BACKEND_URL/api/register', {
+            const userRes = await axios.post(`${BACKEND_URL}/api/register`, {
                 name: formData.name,
                 email: formData.email,
                 password: formData.password,
                 role: formData.role
             });
             // 2. Auto-login the user to obtain token for subsequent actions
-            const loginRes = await axios.post('BACKEND_URL/api/login', {
+            const loginRes = await axios.post(`${BACKEND_URL}/api/login`, {
                 email: formData.email,
                 password: formData.password
             });
@@ -43,7 +44,7 @@ const UserRegistration = () => {
             if (formData.role === 'Owner' && formData.teamName) {
                 try {
                     const token = loginRes.data.token;
-                    const teamRes = await axios.post('BACKEND_URL/api/teams/register', { teamName: formData.teamName }, { headers: { Authorization: `Bearer ${token}` } });
+                    const teamRes = await axios.post(`${BACKEND_URL}/api/teams/register`, { teamName: formData.teamName }, { headers: { Authorization: `Bearer ${token}` } });
                     localStorage.setItem('team', JSON.stringify(teamRes.data));
                 } catch (teamErr) {
                     console.warn('Team creation failed after signup:', teamErr.response?.data || teamErr.message);

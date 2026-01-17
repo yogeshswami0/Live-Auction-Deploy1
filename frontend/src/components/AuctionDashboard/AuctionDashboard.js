@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
 import './AuctionDashboard.css';
+import { BACKEND_URL } from '../../config';
+
 
 const token = localStorage.getItem('token');
-const socket = io('BACKEND_URL', { auth: { token } });
-
+const socket = io(`${BACKEND_URL}`, { auth: { token } });   
 const AuctionDashboard = () => {
     const [player, setPlayer] = useState(null);
     const [highestBid, setHighestBid] = useState(0);
@@ -131,14 +132,14 @@ const AuctionDashboard = () => {
         if (!parsedUser || parsedUser.role !== 'Owner') return;
         const fetchTeamAndEvent = async () => {
             try {
-                const teamRes = await axios.get(`BACKEND_URL/api/teams/owner/${parsedUser.id}`, {
+                const teamRes = await axios.get(`${BACKEND_URL}/api/teams/owner/${parsedUser.id}`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 if (teamRes.data) {
                     setOwnerTeam(teamRes.data);
                     localStorage.setItem('team', JSON.stringify(teamRes.data));
                     if (teamRes.data.event) {
-                        const eventRes = await axios.get('BACKEND_URL/api/events/active');
+                        const eventRes = await axios.get(`${BACKEND_URL}/api/events/active`);
                         if (Array.isArray(eventRes.data) && eventRes.data.length > 0) {
                             const matchEvent = eventRes.data.find(e => e._id === String(teamRes.data.event));
                             setEventConfig(matchEvent || eventRes.data[0]);
@@ -160,7 +161,7 @@ const AuctionDashboard = () => {
         if (!parsedUser || parsedUser.role !== 'Player') return;
         const fetchPlayerStatus = async () => {
             try {
-                const res = await axios.get('BACKEND_URL/api/players/me', {
+                const res = await axios.get(`${BACKEND_URL}/api/players/me`, {
                     headers: { Authorization: `Bearer ${authToken}` }
                 });
                 setPlayerStatus(res.data.status || null);

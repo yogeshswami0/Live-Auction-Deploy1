@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './PlayerRegistration.css';
+import { BACKEND_URL } from '../../config';
 
 const PlayerRegistration = () => {
     const token = localStorage.getItem('token');
@@ -25,7 +26,7 @@ const PlayerRegistration = () => {
         const loadProfile = async () => {
             try {
                 if (!token || !user || user.role !== 'Player') return;
-                const res = await axios.get('BACKEND_URL/api/players/me', {
+                const res = await axios.get(`${BACKEND_URL}/api/players/me`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const p = res.data;
@@ -75,13 +76,13 @@ const PlayerRegistration = () => {
             };
 
             if (hasExistingProfile) {
-                const res = await axios.put('BACKEND_URL/api/players/me', playerPayload, {
+                const res = await axios.put(`${BACKEND_URL}/api/players/me`, playerPayload, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setStatus(res.data.status || '');
                 alert("Profile updated successfully.");
             } else {
-                await axios.post('BACKEND_URL/api/players/register', playerPayload, {
+                await axios.post(`${BACKEND_URL}/api/players/register`, playerPayload, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 alert("Profile submitted. Awaiting admin approval to enter auction pool.");
