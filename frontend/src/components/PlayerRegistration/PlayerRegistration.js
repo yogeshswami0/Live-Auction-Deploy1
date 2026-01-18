@@ -16,7 +16,6 @@ const PlayerRegistration = () => {
         runs: 0,
         wickets: 0,
         matches: 0,
-        rating: 0,
         photo: ''
     });
     const [hasExistingProfile, setHasExistingProfile] = useState(false);
@@ -38,7 +37,6 @@ const PlayerRegistration = () => {
                     runs: p.stats?.runs ?? 0,
                     wickets: p.stats?.wickets ?? 0,
                     matches: p.stats?.matches ?? 0,
-                    rating: p.stats?.rating ?? 0,
                     photo: p.photo || ''
                 });
                 setHasExistingProfile(true);
@@ -70,8 +68,7 @@ const PlayerRegistration = () => {
                 stats: {
                     matches: Number(formData.matches),
                     runs: Number(formData.runs),
-                    wickets: Number(formData.wickets),
-                    rating: Number(formData.rating)
+                    wickets: Number(formData.wickets)
                 }
             };
 
@@ -135,10 +132,6 @@ const PlayerRegistration = () => {
                     <div className="form-group">
                         <label>Total Runs</label>
                         <input type="number" name="runs" value={formData.runs} onChange={handleChange} />
-                    </div>
-                    <div className="form-group">
-                        <label>Rating</label>
-                        <input type="number" name="rating" value={formData.rating} onChange={handleChange} />
                     </div>
                 </div>
 

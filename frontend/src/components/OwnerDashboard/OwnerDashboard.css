@@ -1,5 +1,5 @@
 .owner-container {
-    max-width: 440px;
+    max-width: 480px;
     margin: 100px auto;
     padding: 35px 30px;
     border-radius: 18px;
@@ -32,6 +32,7 @@
     margin-bottom: 24px;
     background: linear-gradient(90deg, #6366f1, #8b5cf6);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -140,7 +141,7 @@
 .owner-subtitle {
     margin: 4px 0 0;
     font-size: 0.9rem;
-    color: #9ca3af;
+    color: #0a0a0a;
 }
 
 .owner-stats {
@@ -151,7 +152,7 @@
 }
 
 .stat-card {
-    padding: 20px;
+    padding: 16px;
     border-radius: 18px;
     box-shadow: 0 10px 30px rgba(15,23,42,0.7);
     background: radial-gradient(circle at top left, rgba(34,197,94,0.22), rgba(15,23,42,0.98));
@@ -160,7 +161,7 @@
 
 .stat-card h3 {
     margin: 0;
-    color: #7f8c8d;
+    color: #4c5b5c;
     font-size: 0.9rem;
     text-transform: uppercase;
 }
