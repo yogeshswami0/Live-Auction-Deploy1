@@ -1,0 +1,54 @@
+.user-reg-container {
+    max-width: 450px;
+    margin: 60px auto;
+    padding: 30px 26px 26px;
+    border-radius: 20px;
+    color: #e5e7eb;
+}
+
+.user-reg-container h2 {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.user-reg-form .form-group {
+    margin-bottom: 15px;
+}
+
+.user-reg-form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.user-reg-form input, .user-reg-form select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.9);
+    color: #e5e7eb;
+}
+
+.reg-submit-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #22c55e, #0ea5e9);
+    color: #0b1120;
+    border: none;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.reg-submit-btn:hover {
+    background: #2a3a7c;
+}
+
+.login-link {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 0.9rem;
+}

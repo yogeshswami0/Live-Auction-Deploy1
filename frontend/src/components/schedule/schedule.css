@@ -1,0 +1,248 @@
+.schedule-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+  color: #e5e7eb;
+}
+
+.schedule-header {
+  margin-bottom: 28px;
+}
+
+.schedule-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #f3f4f6;
+}
+
+.schedule-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #94a3b8;
+}
+
+.schedule-event-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+  padding: 14px 18px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+}
+
+.schedule-event-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.schedule-event-select {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  font-size: 0.95rem;
+  min-width: 200px;
+}
+
+.schedule-event-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.schedule-event-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.15);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.schedule-empty,
+.schedule-loading,
+.schedule-no-teams,
+.schedule-no-matches {
+  padding: 32px 24px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.schedule-empty-hint {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.schedule-teams-section,
+.schedule-matches-section {
+  margin-bottom: 32px;
+}
+
+.schedule-teams-section h2,
+.schedule-matches-section h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 14px;
+  color: #e5e7eb;
+}
+
+.schedule-teams-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.schedule-team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(30, 64, 175, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.schedule-team-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.schedule-team-initial {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.schedule-generate-card {
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+}
+
+.schedule-generate-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 14px;
+  color: #e5e7eb;
+}
+
+.schedule-generate-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.schedule-input {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+}
+
+.schedule-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.schedule-generate-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff;
+  transition: filter 0.2s, transform 0.1s;
+}
+
+.schedule-generate-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.schedule-generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.schedule-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.schedule-table th,
+.schedule-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.schedule-table th {
+  background: rgba(30, 41, 59, 0.9);
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.schedule-table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.schedule-vs {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.schedule-row.stage-league { border-left: 3px solid rgba(59, 130, 246, 0.6); }
+.schedule-row.stage-qualifier { border-left: 3px solid rgba(168, 85, 247, 0.6); }
+.schedule-row.stage-semifinal { border-left: 3px solid rgba(245, 158, 11, 0.6); }
+.schedule-row.stage-final { border-left: 3px solid rgba(34, 197, 94, 0.6); }
+
+@media (max-width: 640px) {
+  .schedule-generate-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .schedule-event-select {
+    min-width: 100%;
+  }
+}
