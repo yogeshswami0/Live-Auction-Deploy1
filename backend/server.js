@@ -13,6 +13,22 @@ const Team = require('./models/Team');
 const Event = require('./models/Event');
 const Bid = require('./models/Bid');
 const Match = require('./models/Match');
+const AuditLog = require('./models/AuditLog');
+
+const {
+    initializeRedis,
+    getAuctionState,
+    setAuctionState,
+    updateAuctionField,
+    clearAuctionState,
+    addBidToHistory,
+    getBidHistory,
+    atomicBidPlacement,
+    acquireFinalizeLock,
+    releaseFinalizeLock,
+    setLastBidTime,
+    getLastBidTime
+} = require('./redisClient');
 
 const app = express();
 app.use(cors());
@@ -39,6 +55,29 @@ const authenticate = (req, res, next) => {
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch((err) => console.log("❌ DB Error:", err));
+
+// Initialize Redis
+let timerInterval = null;
+
+initializeRedis().then(async () => {
+    // Initialize clean auction state on server start
+    await setAuctionState({
+        isActive: false,
+        isPaused: false,
+        timer: 0,
+        currentPlayer: null,
+        highestBid: 0,
+        highestBidder: null,
+        bidHistory: [],
+        startedAt: null,
+        pausedAt: null,
+        remainingTimeOnPause: null
+    });
+    console.log("✅ Auction state initialized in Redis");
+}).catch((err) => {
+    console.error("❌ Redis initialization failed:", err);
+    process.exit(1);
+});
 
 const getActiveEvent = async () => {
     const active = await Event.findOne({ isActive: true });
@@ -75,16 +114,8 @@ const scheduleMatchesForEvent = async (eventId) => {
     }
 };
 
-let auctionState = {
-    currentPlayer: null,
-    highestBid: 0,
-    highestBidder: null,
-    highestBidderId: null,
-    timer: 30,
-    isActive: false,
-    timerInterval: null,
-    bidHistory: []
-};
+// Auction state now managed in Redis (see redisClient.js)
+// timerInterval is managed in memory for server lifecycle
 
 // --- ROUTES ---
 
@@ -288,6 +319,31 @@ app.get('/api/teams/owner/:ownerId', async (req, res) => {
     res.json(team);
 });
 
+// Get bid increment for an event based on current price
+app.get('/api/events/:id/bid-increment', async (req, res) => {
+    try {
+        const eventId = req.params.id;
+        const currentPrice = parseInt(req.query.currentPrice) || 0;
+
+        const event = await Event.findById(eventId);
+        if (!event) return res.status(404).json({ error: 'Event not found' });
+
+        let increment;
+        if (event.usePriceTiers && event.priceTiers && event.priceTiers.length > 0) {
+            const tier = event.priceTiers.find(t =>
+                currentPrice >= t.minPrice && currentPrice < t.maxPrice
+            );
+            increment = tier ? tier.increment : event.bidIncrement;
+        } else {
+            increment = event.bidIncrement;
+        }
+
+        res.json({ increment });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
 // --- SOCKET ENGINE ---
 //const io = new Server(server, { cors: { origin: "*" } });
 
@@ -312,137 +368,609 @@ io.use(async (socket, next) => {
 });
 
 const finalizeAuction = async () => {
-    const { currentPlayer, highestBid, highestBidderId } = auctionState;
-    auctionState.isActive = false;
-    if (highestBidderId) {
-        const team = await Team.findById(highestBidderId);
-        const player = await Player.findById(currentPlayer._id).populate('user');
-        if (team && player) {
-            if (team.remainingBudget >= highestBid) {
-                team.remainingBudget -= highestBid;
-                team.players.push(player._id);
-                await team.save();
-                player.status = 'Sold';
-                player.wonBy = team._id;
-                player.currentPrice = highestBid;
-                await player.save();
-                await Bid.create({
-                    event: player.event,
-                    player: player._id,
-                    team: team._id,
-                    amount: highestBid
-                });
-                const payload = {
-                    status: "SOLD",
-                    player: player.name,
-                    playerId: player._id,
-                    playerUserId: player.user ? player.user._id : null,
-                    team: team.teamName,
-                    teamId: team._id,
-                    teamOwnerId: team.owner,
-                    price: highestBid
-                };
-                io.emit("auction_result", payload);
-                io.emit("congratulations_trigger", payload);
-            } else {
+    // Acquire distributed lock to prevent multiple finalization
+    const lockAcquired = await acquireFinalizeLock();
+    if (!lockAcquired) {
+        console.log('Finalization already in progress by another instance');
+        return;
+    }
+
+    try {
+        const state = await getAuctionState();
+        const { currentPlayer, highestBid, highestBidder } = state;
+        const highestBidderId = state.highestBidder ? state.highestBidder.teamId : null;
+
+        if (highestBidderId) {
+            const team = await Team.findById(highestBidderId);
+            const player = await Player.findById(currentPlayer._id).populate('user');
+            if (team && player) {
+                if (team.remainingBudget >= highestBid) {
+                    team.remainingBudget -= highestBid;
+                    team.players.push(player._id);
+                    await team.save();
+                    player.status = 'Sold';
+                    player.wonBy = team._id;
+                    player.currentPrice = highestBid;
+                    await player.save();
+                    await Bid.create({
+                        event: player.event,
+                        player: player._id,
+                        team: team._id,
+                        amount: highestBid
+                    });
+
+                    // Audit log
+                    await AuditLog.create({
+                        event: player.event,
+                        player: player._id,
+                        action: 'auction_finalized',
+                        performedBy: team.owner,
+                        details: { teamName: team.teamName, finalBid: highestBid, status: 'SOLD' }
+                    });
+
+                    const payload = {
+                        status: "SOLD",
+                        player: player.name,
+                        playerId: player._id,
+                        playerUserId: player.user ? player.user._id : null,
+                        team: team.teamName,
+                        teamId: team._id,
+                        teamOwnerId: team.owner,
+                        price: highestBid
+                    };
+                    io.emit("auction_result", payload);
+                    io.emit("congratulations_trigger", payload);
+                } else {
+                    player.status = 'Unsold';
+                    await player.save();
+
+                    // Audit log
+                    await AuditLog.create({
+                        event: player.event,
+                        player: player._id,
+                        action: 'auction_finalized',
+                        performedBy: team.owner,
+                        details: { reason: 'Insufficient budget', status: 'UNSOLD' }
+                    });
+
+                    io.emit("auction_result", {
+                        status: "UNSOLD",
+                        player: player.name,
+                        playerId: player._id,
+                        playerUserId: player.user ? player.user._id : null
+                    });
+                }
+            }
+        } else {
+            const player = await Player.findById(currentPlayer._id).populate('user');
+            if (player) {
                 player.status = 'Unsold';
                 await player.save();
+
+                // Audit log
+                if (player.event) {
+                    await AuditLog.create({
+                        event: player.event,
+                        player: player._id,
+                        action: 'auction_finalized',
+                        performedBy: player.user ? player.user._id : null,
+                        details: { reason: 'No bids', status: 'UNSOLD' }
+                    });
+                }
+
                 io.emit("auction_result", {
                     status: "UNSOLD",
                     player: player.name,
                     playerId: player._id,
                     playerUserId: player.user ? player.user._id : null
                 });
+            } else {
+                io.emit("auction_result", { status: "UNSOLD", player: currentPlayer.name });
             }
         }
-    } else {
-        const player = await Player.findById(currentPlayer._id).populate('user');
-        if (player) {
-            player.status = 'Unsold';
-            await player.save();
-            io.emit("auction_result", {
-                status: "UNSOLD",
-                player: player.name,
-                playerId: player._id,
-                playerUserId: player.user ? player.user._id : null
-            });
-        } else {
-            io.emit("auction_result", { status: "UNSOLD", player: currentPlayer.name });
-        }
+
+        // Clear auction state in Redis
+        await clearAuctionState();
+        io.emit("auction_ended");
+
+    } catch (error) {
+        console.error('Error finalizing auction:', error);
+    } finally {
+        await releaseFinalizeLock();
     }
-    auctionState.currentPlayer = null;
-    auctionState.bidHistory = [];
-    io.emit("auction_ended");
+};
+
+// Helper function to calculate bid increment
+const calculateBidIncrement = (event, currentPrice) => {
+    if (event.usePriceTiers && event.priceTiers && event.priceTiers.length > 0) {
+        const tier = event.priceTiers.find(t =>
+            currentPrice >= t.minPrice && currentPrice < t.maxPrice
+        );
+        return tier ? tier.increment : event.bidIncrement;
+    }
+    return event.bidIncrement;
 };
 
 io.on('connection', (socket) => {
+    // Admin Start Auction (modified for Redis)
     socket.on("admin_start_auction", async (playerId) => {
-        if (!socket.user || socket.user.role !== 'Admin') return socket.emit('error', { message: 'Unauthorized' });
-        if (auctionState.isActive) return socket.emit('error', { message: 'Another auction is already active' });
-        const player = await Player.findById(playerId).populate('event');
-        const activeEvent = await getActiveEvent();
-        if (!player || player.status !== 'Approved') return;
-        if (!activeEvent || !player.event || player.event.toString() !== activeEvent._id.toString()) return;
-        auctionState = {
-            ...auctionState,
-            currentPlayer: player,
-            highestBid: player.basePrice,
-            timer: 30,
-            isActive: true,
-            highestBidderId: null,
-            highestBidder: "Base Price",
-            bidHistory: [{
-                bidder: "Base Price",
-                amount: player.basePrice,
-                time: new Date().toLocaleTimeString()
-            }]
-        };
-        io.emit("auction_started", auctionState);
-        const interval = setInterval(() => {
-            if (auctionState.timer > 0) {
-                auctionState.timer--;
-                io.emit("timer_update", auctionState.timer);
-            } else {
-                clearInterval(interval);
-                finalizeAuction();
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
             }
-        }, 1000);
+
+            const state = await getAuctionState();
+            if (state.isActive) {
+                return socket.emit('error', { message: 'Another auction is already active' });
+            }
+
+            const player = await Player.findById(playerId).populate('event');
+            const activeEvent = await getActiveEvent();
+
+            if (!player || player.status !== 'Approved') {
+                return socket.emit('error', { message: 'Player not found or not approved' });
+            }
+
+            if (!activeEvent || !player.event || player.event.toString() !== activeEvent._id.toString()) {
+                return socket.emit('error', { message: 'Player not in active event' });
+            }
+
+            const event = await Event.findById(activeEvent._id);
+            const currentIncrement = calculateBidIncrement(event, player.basePrice);
+
+            // Initialize auction state in Redis
+            const newState = {
+                isActive: true,
+                isPaused: false,
+                currentPlayer: player,
+                highestBid: player.basePrice,
+                highestBidder: { teamId: null, teamName: "Base Price" },
+                timer: 30,
+                bidHistory: [{
+                    bidder: "Base Price",
+                    amount: player.basePrice,
+                    time: new Date().toLocaleTimeString()
+                }],
+                startedAt: Date.now(),
+                pausedAt: null,
+                remainingTimeOnPause: null
+            };
+
+            await setAuctionState(newState);
+            await clearAuctionState(); // Clear old bid history
+            await addBidToHistory({
+                teamName: "Base Price",
+                bidAmount: player.basePrice,
+                timestamp: Date.now()
+            });
+
+            // Audit log
+            await AuditLog.create({
+                event: activeEvent._id,
+                player: player._id,
+                action: 'auction_started',
+                performedBy: socket.user.id,
+                details: { playerName: player.name, basePrice: player.basePrice }
+            });
+
+            io.emit("auction_started", {
+                currentPlayer: player,
+                highestBid: player.basePrice,
+                timer: 30,
+                currentIncrement,
+                bidHistory: newState.bidHistory
+            });
+
+            // Start timer interval
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(async () => {
+                try {
+                    const currentState = await getAuctionState();
+
+                    // Skip countdown if paused
+                    if (currentState.isPaused) return;
+
+                    if (currentState.timer > 0) {
+                        const newTimer = currentState.timer - 1;
+                        await updateAuctionField('timer', newTimer);
+                        io.emit("timer_update", newTimer);
+                    } else {
+                        // Check if a bid was placed in the last 10 seconds (edge case protection)
+                        const lastBidTime = await getLastBidTime();
+                        const timeSinceLastBid = lastBidTime ? Date.now() - lastBidTime : Infinity;
+
+                        if (timeSinceLastBid < 10000) {
+                            // Bid placed within last 10s, extend timer
+                            await updateAuctionField('timer', 20);
+                            io.emit('timer_extended', { newTimer: 20, extensionSeconds: 20 });
+                            return;
+                        }
+
+                        // Finalize auction
+                        clearInterval(timerInterval);
+                        await finalizeAuction();
+                    }
+                } catch (error) {
+                    console.error('Timer interval error:', error);
+                }
+            }, 1000);
+
+        } catch (error) {
+            console.error('Error starting auction:', error);
+            socket.emit('error', { message: 'Failed to start auction' });
+        }
     });
 
+    // Place Bid (completely rewritten with Redis + atomic operations)
     socket.on("place_bid", async ({ teamId, teamName, bidAmount }) => {
-        if (!auctionState.isActive || bidAmount <= auctionState.highestBid) return;
-        if (!socket.user) return socket.emit('error', { message: 'Unauthorized' });
-        const team = await Team.findById(teamId).populate('players');
-        if (!team || team.remainingBudget < bidAmount) return;
-        if (socket.user.role !== 'Admin' && team.owner.toString() !== socket.user.id) return socket.emit('error', { message: 'You do not own this team' });
-        if (!auctionState.currentPlayer || !auctionState.currentPlayer.event) return;
-        if (!team.event || team.event.toString() !== auctionState.currentPlayer.event.toString()) return;
-        const currentRole = auctionState.currentPlayer.role;
-        const event = await Event.findById(team.event);
-        let roleLimit = null;
-        if (event && event.roleLimits) {
-            if (currentRole === 'Batsman') roleLimit = event.roleLimits.batsman;
-            if (currentRole === 'Bowler') roleLimit = event.roleLimits.bowler;
-            if (currentRole === 'All-Rounder') roleLimit = event.roleLimits.allRounder;
-            if (currentRole === 'Wicketkeeper') roleLimit = event.roleLimits.wicketkeeper;
+        try {
+            // Authentication check
+            if (!socket.user) {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            // Get current state
+            const currentState = await getAuctionState();
+
+            if (!currentState.isActive) {
+                return socket.emit('bid_rejected', { message: 'No active auction' });
+            }
+
+            if (currentState.isPaused) {
+                return socket.emit('bid_rejected', { message: 'Auction is paused' });
+            }
+
+            // Fetch team and validate
+            const team = await Team.findById(teamId).populate('players');
+            if (!team) {
+                return socket.emit('bid_rejected', { message: 'Team not found' });
+            }
+
+            if (team.remainingBudget < bidAmount) {
+                return socket.emit('bid_rejected', {
+                    message: 'Insufficient budget',
+                    remainingBudget: team.remainingBudget
+                });
+            }
+
+            // Authorization: Only team owner can bid (or admin)
+            if (socket.user.role !== 'Admin' && team.owner.toString() !== socket.user.id) {
+                return socket.emit('error', { message: 'You do not own this team' });
+            }
+
+            // Validate player and event match
+            if (!currentState.currentPlayer || !currentState.currentPlayer.event) {
+                return socket.emit('bid_rejected', { message: 'No player in auction' });
+            }
+
+            if (!team.event || team.event.toString() !== currentState.currentPlayer.event.toString()) {
+                return socket.emit('bid_rejected', { message: 'Team not in this event' });
+            }
+
+            // Fetch event to get bid increment rules and role limits
+            const event = await Event.findById(team.event);
+            if (!event) {
+                return socket.emit('bid_rejected', { message: 'Event not found' });
+            }
+
+            // Calculate required increment
+            const requiredIncrement = calculateBidIncrement(event, currentState.highestBid);
+
+            // Validate bid meets increment requirement
+            if (bidAmount < currentState.highestBid + requiredIncrement) {
+                return socket.emit('bid_rejected', {
+                    message: `Bid must be at least ₹${requiredIncrement.toLocaleString('en-IN')} higher`,
+                    requiredBid: currentState.highestBid + requiredIncrement,
+                    requiredIncrement
+                });
+            }
+
+            // Validate role limits
+            const currentRole = currentState.currentPlayer.role;
+            let roleLimit = null;
+            if (event.roleLimits) {
+                if (currentRole === 'Batsman') roleLimit = event.roleLimits.batsman;
+                if (currentRole === 'Bowler') roleLimit = event.roleLimits.bowler;
+                if (currentRole === 'All-Rounder') roleLimit = event.roleLimits.allRounder;
+                if (currentRole === 'Wicketkeeper') roleLimit = event.roleLimits.wicketkeeper;
+            }
+
+            if (roleLimit && roleLimit > 0) {
+                const currentRoleCount = team.players.filter(p => p.role === currentRole).length;
+                if (currentRoleCount >= roleLimit) {
+                    return socket.emit('bid_rejected', {
+                        message: `${currentRole} limit reached (${roleLimit} max)`,
+                        roleLimit
+                    });
+                }
+            }
+
+            // Atomic bid placement with Redis transaction
+            const result = await atomicBidPlacement({
+                teamId,
+                teamName,
+                bidAmount,
+                eventId: event._id,
+                requiredIncrement
+            });
+
+            if (!result.success) {
+                return socket.emit('bid_rejected', { message: result.reason });
+            }
+
+            // Save bid to database
+            await Bid.create({
+                event: currentState.currentPlayer.event,
+                player: currentState.currentPlayer._id,
+                team: team._id,
+                amount: bidAmount
+            });
+
+            // Audit log
+            await AuditLog.create({
+                event: event._id,
+                player: currentState.currentPlayer._id,
+                action: 'bid_placed',
+                performedBy: socket.user.id,
+                details: { teamName, bidAmount }
+            });
+
+            // Calculate next increment based on new bid
+            const nextIncrement = calculateBidIncrement(event, bidAmount);
+
+            // Broadcast successful bid to all clients
+            io.emit('bid_placed', {
+                teamName,
+                amount: bidAmount,
+                time: new Date().toLocaleTimeString()
+            });
+
+            io.emit('update_bid', {
+                highestBid: result.updatedState.highestBid,
+                highestBidder: result.updatedState.highestBidder.teamName,
+                timer: result.updatedState.timer,
+                bidHistory: result.bidHistory,
+                nextIncrement
+            });
+
+            // Emit confirmation to bidder
+            socket.emit('bid_confirmed', {
+                bidAmount,
+                remainingBudget: team.remainingBudget - bidAmount
+            });
+
+        } catch (error) {
+            console.error('Bid placement error:', error);
+            socket.emit('error', { message: 'Failed to place bid, please try again' });
         }
-        if (roleLimit && roleLimit > 0) {
-            const currentRoleCount = team.players.filter(p => p.role === currentRole).length;
-            if (currentRoleCount >= roleLimit) return;
+    });
+
+    // Admin Pause Auction
+    socket.on("admin_pause_auction", async () => {
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            const state = await getAuctionState();
+            if (!state.isActive) {
+                return socket.emit('error', { message: 'No active auction to pause' });
+            }
+
+            if (state.isPaused) {
+                return socket.emit('error', { message: 'Auction is already paused' });
+            }
+
+            // Pause the auction
+            const pausedState = {
+                ...state,
+                isPaused: true,
+                pausedAt: Date.now(),
+                remainingTimeOnPause: state.timer
+            };
+            await setAuctionState(pausedState);
+
+            // Audit log
+            if (state.currentPlayer && state.currentPlayer.event) {
+                await AuditLog.create({
+                    event: state.currentPlayer.event,
+                    player: state.currentPlayer._id,
+                    action: 'auction_paused',
+                    performedBy: socket.user.id,
+                    details: { remainingTime: state.timer }
+                });
+            }
+
+            io.emit('auction_paused', { remainingTime: state.timer });
+
+        } catch (error) {
+            console.error('Error pausing auction:', error);
+            socket.emit('error', { message: 'Failed to pause auction' });
         }
-        await Bid.create({
-            event: auctionState.currentPlayer.event,
-            player: auctionState.currentPlayer._id,
-            team: team._id,
-            amount: bidAmount
-        });
-        io.emit("bid_placed", { teamName, amount: bidAmount });
-        auctionState.highestBid = bidAmount;
-        auctionState.highestBidder = teamName;
-        auctionState.highestBidderId = teamId;
-        auctionState.bidHistory.unshift({ bidder: teamName, amount: bidAmount, time: new Date().toLocaleTimeString() });
-        if (auctionState.timer < 10) auctionState.timer = 20;
-        io.emit("update_bid", { highestBid: auctionState.highestBid, highestBidder: auctionState.highestBidder, timer: auctionState.timer, bidHistory: auctionState.bidHistory });
+    });
+
+    // Admin Resume Auction
+    socket.on("admin_resume_auction", async () => {
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            const state = await getAuctionState();
+            if (!state.isPaused) {
+                return socket.emit('error', { message: 'Auction is not paused' });
+            }
+
+            // Resume the auction
+            const resumedState = {
+                ...state,
+                isPaused: false,
+                timer: state.remainingTimeOnPause,
+                pausedAt: null
+            };
+            await setAuctionState(resumedState);
+
+            // Audit log
+            if (state.currentPlayer && state.currentPlayer.event) {
+                await AuditLog.create({
+                    event: state.currentPlayer.event,
+                    player: state.currentPlayer._id,
+                    action: 'auction_resumed',
+                    performedBy: socket.user.id,
+                    details: { restoredTimer: state.remainingTimeOnPause }
+                });
+            }
+
+            io.emit('auction_resumed', {
+                timer: state.remainingTimeOnPause,
+                currentPlayer: state.currentPlayer
+            });
+
+        } catch (error) {
+            console.error('Error resuming auction:', error);
+            socket.emit('error', { message: 'Failed to resume auction' });
+        }
+    });
+
+    // Admin Skip Player
+    socket.on("admin_skip_player", async () => {
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            const state = await getAuctionState();
+            if (!state.isActive) {
+                return socket.emit('error', { message: 'No active auction to skip' });
+            }
+
+            // Stop timer
+            if (timerInterval) clearInterval(timerInterval);
+
+            // Update player status to Unsold
+            const player = await Player.findById(state.currentPlayer._id);
+            if (player) {
+                player.status = 'Unsold';
+                await player.save();
+
+                // Save bid history (if any bids were placed)
+                if (state.highestBidder && state.highestBidder.teamId) {
+                    await Bid.create({
+                        event: player.event,
+                        player: player._id,
+                        team: state.highestBidder.teamId,
+                        amount: state.highestBid
+                    });
+                }
+
+                // Audit log
+                await AuditLog.create({
+                    event: player.event,
+                    player: player._id,
+                    action: 'player_skipped',
+                    performedBy: socket.user.id,
+                    details: {
+                        reason: 'Admin Skip',
+                        finalBid: state.highestBid,
+                        highestBidder: state.highestBidder ? state.highestBidder.teamName : null
+                    }
+                });
+
+                io.emit('player_skipped', {
+                    playerId: player._id,
+                    playerName: player.name,
+                    reason: 'Admin Skip'
+                });
+            }
+
+            // Clear auction state
+            await clearAuctionState();
+            io.emit('auction_ended');
+
+        } catch (error) {
+            console.error('Error skipping player:', error);
+            socket.emit('error', { message: 'Failed to skip player' });
+        }
+    });
+
+    // Admin Extend Timer
+    socket.on("admin_extend_timer", async (data) => {
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            const extensionSeconds = data.extensionSeconds || 10;
+            const state = await getAuctionState();
+
+            if (!state.isActive) {
+                return socket.emit('error', { message: 'No active auction' });
+            }
+
+            if (state.isPaused) {
+                return socket.emit('error', { message: 'Cannot extend timer while paused' });
+            }
+
+            const newTimer = state.timer + extensionSeconds;
+            await updateAuctionField('timer', newTimer);
+
+            // Audit log
+            if (state.currentPlayer && state.currentPlayer.event) {
+                await AuditLog.create({
+                    event: state.currentPlayer.event,
+                    player: state.currentPlayer._id,
+                    action: 'timer_extended',
+                    performedBy: socket.user.id,
+                    details: { extensionSeconds, newTimer }
+                });
+            }
+
+            io.emit('timer_extended', { newTimer, extensionSeconds });
+
+        } catch (error) {
+            console.error('Error extending timer:', error);
+            socket.emit('error', { message: 'Failed to extend timer' });
+        }
+    });
+
+    // Admin Emergency Stop
+    socket.on("admin_emergency_stop", async () => {
+        try {
+            if (!socket.user || socket.user.role !== 'Admin') {
+                return socket.emit('error', { message: 'Unauthorized' });
+            }
+
+            const state = await getAuctionState();
+            if (!state.isActive) {
+                return socket.emit('error', { message: 'No active auction to stop' });
+            }
+
+            // Stop timer immediately
+            if (timerInterval) clearInterval(timerInterval);
+
+            // Audit log
+            if (state.currentPlayer && state.currentPlayer.event) {
+                await AuditLog.create({
+                    event: state.currentPlayer.event,
+                    player: state.currentPlayer._id,
+                    action: 'emergency_stop',
+                    performedBy: socket.user.id,
+                    details: { currentPlayer: state.currentPlayer.name, message: 'Emergency stop by admin' }
+                });
+            }
+
+            // Clear state without finalization
+            await clearAuctionState();
+
+            io.emit('emergency_stop', {
+                message: 'Auction stopped by admin',
+                currentPlayer: state.currentPlayer
+            });
+
+        } catch (error) {
+            console.error('Error during emergency stop:', error);
+            socket.emit('error', { message: 'Failed to stop auction' });
+        }
     });
 });
 

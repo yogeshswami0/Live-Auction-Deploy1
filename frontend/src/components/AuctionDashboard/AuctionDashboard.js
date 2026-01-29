@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './AuctionDashboard.css';
 import { BACKEND_URL } from '../../config';
 
@@ -25,16 +27,44 @@ const AuctionDashboard = () => {
     const [resultOverlay, setResultOverlay] = useState(null);
     const [playerStatus, setPlayerStatus] = useState(null);
 
+    // New states for dynamic increments and admin controls
+    const [currentIncrement, setCurrentIncrement] = useState(500000);
+    const [isPaused, setIsPaused] = useState(false);
+    const [pauseOverlay, setPauseOverlay] = useState(null);
+    const [isConnected, setIsConnected] = useState(true);
+
     const user = JSON.parse(localStorage.getItem('user'));
 
     useEffect(() => {
+        // Connection status
+        socket.on('connect', () => {
+            setIsConnected(true);
+            toast.success('Connected to auction server', { autoClose: 2000 });
+        });
+
+        socket.on('disconnect', () => {
+            setIsConnected(false);
+            toast.error('Disconnected from server - Attempting to reconnect...', { autoClose: false });
+        });
+
+        socket.on('reconnect', () => {
+            setIsConnected(true);
+            toast.success('Reconnected successfully!', { autoClose: 2000 });
+        });
+
         socket.on("auction_started", (data) => {
             setPlayer(data.currentPlayer);
             setHighestBid(data.highestBid);
-            setHighestBidder(data.highestBidder);
+            setHighestBidder(typeof data.highestBidder === 'object' ? data.highestBidder.teamName : data.highestBidder);
             setTimer(data.timer);
             setHistory(data.bidHistory);
             setIsActive(true);
+            setIsPaused(false);
+            setPauseOverlay(null);
+            // Set current increment from server
+            if (data.currentIncrement) {
+                setCurrentIncrement(data.currentIncrement);
+            }
             if (data.currentPlayer && data.currentPlayer.event && data.currentPlayer.event.name) {
                 setEventName(data.currentPlayer.event.name);
             } else {
@@ -47,6 +77,73 @@ const AuctionDashboard = () => {
             setHighestBidder(data.highestBidder);
             setTimer(data.timer);
             setHistory(data.bidHistory);
+            // Update increment based on new highest bid
+            if (data.nextIncrement) {
+                setCurrentIncrement(data.nextIncrement);
+            }
+        });
+
+        // Admin pause/resume/skip handlers
+        socket.on("auction_paused", (data) => {
+            setIsPaused(true);
+            setPauseOverlay({
+                message: "Auction Paused by Admin",
+                remainingTime: data.remainingTime
+            });
+            toast.warning('Auction paused by admin', { autoClose: 3000 });
+        });
+
+        socket.on("auction_resumed", (data) => {
+            setIsPaused(false);
+            setPauseOverlay(null);
+            toast.info('Auction resumed!', { autoClose: 2000 });
+        });
+
+        socket.on("player_skipped", (data) => {
+            setIsActive(false);
+            setPlayer(null);
+            setIsPaused(false);
+            setPauseOverlay(null);
+            toast.info(`Player ${data.playerName} skipped - marked as Unsold`, { autoClose: 4000 });
+            setResultOverlay({
+                status: 'SKIPPED',
+                title: 'Player Skipped',
+                message: `${data.playerName} was skipped by admin and marked as Unsold`,
+                player: data.playerName
+            });
+            setTimeout(() => setResultOverlay(null), 4000);
+        });
+
+        socket.on("timer_extended", (data) => {
+            setTimer(data.newTimer);
+            toast.info(`Timer extended by ${data.extensionSeconds} seconds`, { autoClose: 2000 });
+        });
+
+        socket.on("emergency_stop", (data) => {
+            setIsActive(false);
+            setPlayer(null);
+            setIsPaused(false);
+            setPauseOverlay(null);
+            toast.error(data.message, { autoClose: 5000 });
+            setResultOverlay({
+                status: 'STOPPED',
+                title: 'Auction Stopped',
+                message: data.message,
+                player: data.currentPlayer?.name || 'N/A'
+            });
+            setTimeout(() => setResultOverlay(null), 5000);
+        });
+
+        socket.on("bid_rejected", (data) => {
+            toast.error(data.message || 'Bid rejected', { autoClose: 3000 });
+        });
+
+        socket.on("bid_confirmed", (data) => {
+            toast.success(`Bid placed! ₹${data.bidAmount.toLocaleString('en-IN')}`, { autoClose: 2000 });
+        });
+
+        socket.on("error", (data) => {
+            toast.error(data.message || 'An error occurred', { autoClose: 3000 });
         });
 
         socket.on("timer_update", (timeLeft) => setTimer(timeLeft));
@@ -114,6 +211,9 @@ const AuctionDashboard = () => {
         });
 
         return () => {
+            socket.off("connect");
+            socket.off("disconnect");
+            socket.off("reconnect");
             socket.off("auction_started");
             socket.off("update_bid");
             socket.off("timer_update");
@@ -121,6 +221,14 @@ const AuctionDashboard = () => {
             socket.off("viewer_count");
             socket.off("bid_placed");
             socket.off("congratulations_trigger");
+            socket.off("auction_paused");
+            socket.off("auction_resumed");
+            socket.off("player_skipped");
+            socket.off("timer_extended");
+            socket.off("emergency_stop");
+            socket.off("bid_rejected");
+            socket.off("bid_confirmed");
+            socket.off("error");
         };
     }, []);
 
@@ -173,8 +281,9 @@ const AuctionDashboard = () => {
     }, []);
 
     const handlePlaceBid = () => {
-        if (!ownerTeam) return alert("Only Team Owners with a registered team can bid!");
-        const nextBid = highestBid + 500000;
+        if (!ownerTeam) return toast.error("Only Team Owners with a registered team can bid!");
+        if (isPaused) return toast.warning("Bidding is paused by admin");
+        const nextBid = highestBid + currentIncrement;
 
         socket.emit("place_bid", {
             teamId: ownerTeam._id,
@@ -183,7 +292,7 @@ const AuctionDashboard = () => {
         });
     };
 
-    const nextBidAmount = highestBid + 500000;
+    const nextBidAmount = highestBid + currentIncrement;
     let isBidDisabled = false;
     if (!user || user.role !== 'Owner') {
         isBidDisabled = true;
@@ -214,6 +323,58 @@ const AuctionDashboard = () => {
 
     return (
         <div className="auction-root">
+            {/* Toast Notifications */}
+            <ToastContainer position="top-right" autoClose={3000} />
+
+            {/* Connection Status Indicator */}
+            <div style={{
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 15px',
+                borderRadius: '20px',
+                background: isConnected ? '#28a745' : '#dc3545',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+            }}>
+                <div style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: 'white',
+                    animation: isConnected ? 'none' : 'pulse 1.5s ease-in-out infinite'
+                }}></div>
+                {isConnected ? 'Connected' : 'Disconnected'}
+            </div>
+
+            {/* Pause Overlay */}
+            {isPaused && pauseOverlay && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(255, 193, 7, 0.9)',
+                    zIndex: 9998,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    color: 'black'
+                }}>
+                    <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>⏸️ {pauseOverlay.message}</h1>
+                    <p style={{ fontSize: '24px' }}>Time remaining when paused: {pauseOverlay.remainingTime}s</p>
+                    <p style={{ fontSize: '18px', marginTop: '10px' }}>Please wait for admin to resume...</p>
+                </div>
+            )}
+
             {user && user.role === 'Player' && playerStatus && (
                 <div className="player-status-strip">
                     <span className="player-status-label">My Auction Status</span>
@@ -289,9 +450,24 @@ const AuctionDashboard = () => {
                                 <p>Highest Bidder: <strong>{highestBidder}</strong></p>
                             </div>
                             {user?.role === 'Owner' && (
-                                <button className="bid-btn" onClick={handlePlaceBid} disabled={isBidDisabled}>
-                                    {isBidDisabled ? 'Bid Not Available' : `Bid ₹${nextBidAmount.toLocaleString()}`}
-                                </button>
+                                <>
+                                    <button className="bid-btn" onClick={handlePlaceBid} disabled={isBidDisabled || isPaused}>
+                                        {isPaused ? 'Paused by Admin' : (isBidDisabled ? 'Bid Not Available' : `Bid ₹${nextBidAmount.toLocaleString()}`)}
+                                    </button>
+                                    {!isBidDisabled && !isPaused && (
+                                        <div style={{
+                                            marginTop: '10px',
+                                            fontSize: '14px',
+                                            color: '#666',
+                                            textAlign: 'center'
+                                        }}>
+                                            <div>Minimum bid: <strong>₹{nextBidAmount.toLocaleString('en-IN')}</strong></div>
+                                            <div style={{ fontSize: '12px', color: '#999' }}>
+                                                Increment: ₹{currentIncrement.toLocaleString('en-IN')}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>

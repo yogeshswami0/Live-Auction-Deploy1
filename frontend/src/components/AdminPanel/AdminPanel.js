@@ -19,10 +19,81 @@ const AdminPanel = () => {
     const [selectedEventId, setSelectedEventId] = useState(null);
     const [matchesLoading, setMatchesLoading] = useState(false);
 
+    // Bid configuration states
+    const [bidIncrement, setBidIncrement] = useState('500000');
+    const [usePriceTiers, setUsePriceTiers] = useState(false);
+    const [priceTiers, setPriceTiers] = useState([
+        { minPrice: 0, maxPrice: 5000000, increment: 300000 },
+        { minPrice: 5000000, maxPrice: 10000000, increment: 500000 },
+        { minPrice: 10000000, maxPrice: 999999999, increment: 1000000 }
+    ]);
+
+    // Live auction control states
+    const [auctionStatus, setAuctionStatus] = useState('idle'); // 'idle', 'running', 'paused'
+    const [currentAuctionPlayer, setCurrentAuctionPlayer] = useState(null);
+    const [currentTimer, setCurrentTimer] = useState(0);
+
     useEffect(() => {
         fetchPlayers();
         fetchEvents();
-    });
+
+        // Socket listeners for live auction control
+        socket.on('auction_started', (data) => {
+            setAuctionStatus('running');
+            setCurrentAuctionPlayer(data.currentPlayer);
+            setCurrentTimer(data.timer);
+        });
+
+        socket.on('timer_update', (timer) => {
+            setCurrentTimer(timer);
+        });
+
+        socket.on('auction_paused', (data) => {
+            setAuctionStatus('paused');
+            alert(`Auction paused with ${data.remainingTime}s remaining`);
+        });
+
+        socket.on('auction_resumed', (data) => {
+            setAuctionStatus('running');
+            alert('Auction resumed');
+        });
+
+        socket.on('player_skipped', (data) => {
+            setAuctionStatus('idle');
+            setCurrentAuctionPlayer(null);
+            alert(`Player ${data.playerName} skipped and marked as Unsold`);
+            fetchPlayers(); // Refresh player list
+        });
+
+        socket.on('timer_extended', (data) => {
+            setCurrentTimer(data.newTimer);
+            alert(`Timer extended by ${data.extensionSeconds} seconds`);
+        });
+
+        socket.on('emergency_stop', (data) => {
+            setAuctionStatus('idle');
+            setCurrentAuctionPlayer(null);
+            alert(data.message);
+        });
+
+        socket.on('auction_ended', () => {
+            setAuctionStatus('idle');
+            setCurrentAuctionPlayer(null);
+            setCurrentTimer(0);
+            fetchPlayers(); // Refresh player list
+        });
+
+        return () => {
+            socket.off('auction_started');
+            socket.off('timer_update');
+            socket.off('auction_paused');
+            socket.off('auction_resumed');
+            socket.off('player_skipped');
+            socket.off('timer_extended');
+            socket.off('emergency_stop');
+            socket.off('auction_ended');
+        };
+    }, []); // Empty dependency array - run once on mount
 
     const fetchPlayers = async () => {
         try {
@@ -70,7 +141,10 @@ const AdminPanel = () => {
         if (!newEventName) return;
         try {
             const payload = {
-                name: newEventName
+                name: newEventName,
+                bidIncrement: Number(bidIncrement),
+                usePriceTiers,
+                priceTiers: usePriceTiers ? priceTiers : []
             };
             if (newEventBudget) {
                 payload.teamBudget = Number(newEventBudget);
@@ -85,9 +159,57 @@ const AdminPanel = () => {
             setNewEventName('');
             setNewEventBudget('');
             setNewEventStart('');
+            alert('Event created successfully!');
         } catch (err) {
             console.error("Error creating event", err);
+            alert(err.response?.data?.error || 'Error creating event');
         }
+    };
+
+    // Admin control functions
+    const handlePauseAuction = () => {
+        if (auctionStatus !== 'running') return;
+        socket.emit('admin_pause_auction');
+    };
+
+    const handleResumeAuction = () => {
+        if (auctionStatus !== 'paused') return;
+        socket.emit('admin_resume_auction');
+    };
+
+    const handleSkipPlayer = () => {
+        if (auctionStatus === 'idle') return;
+        if (!window.confirm(`Skip ${currentAuctionPlayer?.name || 'this player'} and mark as Unsold?`)) return;
+        socket.emit('admin_skip_player');
+    };
+
+    const handleExtendTimer = () => {
+        if (auctionStatus !== 'running') return;
+        socket.emit('admin_extend_timer', { extensionSeconds: 10 });
+    };
+
+    const handleEmergencyStop = () => {
+        if (auctionStatus === 'idle') return;
+        if (!window.confirm('EMERGENCY STOP will halt the auction immediately. Continue?')) return;
+        socket.emit('admin_emergency_stop');
+    };
+
+    const addPriceTier = () => {
+        setPriceTiers([...priceTiers, { minPrice: 0, maxPrice: 1000000, increment: 100000 }]);
+    };
+
+    const removePriceTier = (index) => {
+        if (priceTiers.length <= 1) {
+            alert('At least one price tier is required');
+            return;
+        }
+        setPriceTiers(priceTiers.filter((_, i) => i !== index));
+    };
+
+    const updatePriceTier = (index, field, value) => {
+        const updated = [...priceTiers];
+        updated[index][field] = Number(value);
+        setPriceTiers(updated);
     };
 
     const activateEvent = async (eventId) => {
@@ -158,6 +280,81 @@ const AdminPanel = () => {
             <h2>Admin Control Panel</h2>
             <p>Manage events, verify players, and control live auctions.</p>
 
+            {/* Live Auction Controls */}
+            {auctionStatus !== 'idle' && (
+                <div className="live-controls-section" style={{
+                    background: auctionStatus === 'paused' ? '#fff3cd' : '#d1ecf1',
+                    border: `2px solid ${auctionStatus === 'paused' ? '#ffc107' : '#17a2b8'}`,
+                    padding: '20px',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                }}>
+                    <h3>🔴 Live Auction Controls</h3>
+                    <div style={{ marginBottom: '15px' }}>
+                        <strong>Current Player:</strong> {currentAuctionPlayer?.name || 'N/A'}
+                        <br />
+                        <strong>Timer:</strong> {currentTimer}s
+                        <br />
+                        <strong>Status:</strong>
+                        <span style={{
+                            marginLeft: '10px',
+                            padding: '5px 10px',
+                            borderRadius: '5px',
+                            background: auctionStatus === 'running' ? '#28a745' : '#ffc107',
+                            color: 'white',
+                            fontWeight: 'bold'
+                        }}>
+                            {auctionStatus.toUpperCase()}
+                        </span>
+                    </div>
+                    <div className="control-buttons" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        {/* Primary Actions */}
+                        {auctionStatus === 'running' && (
+                            <button
+                                onClick={handlePauseAuction}
+                                style={{ background: '#ffc107', color: 'black', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                                ⏸️ PAUSE AUCTION
+                            </button>
+                        )}
+                        {auctionStatus === 'paused' && (
+                            <button
+                                onClick={handleResumeAuction}
+                                style={{ background: '#28a745', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                                ▶️ RESUME AUCTION
+                            </button>
+                        )}
+
+                        {/* Player Management */}
+                        <button
+                            onClick={handleSkipPlayer}
+                            style={{ background: '#6c757d', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            ⏭️ SKIP PLAYER
+                        </button>
+
+                        {/* Quick Settings */}
+                        {auctionStatus === 'running' && (
+                            <button
+                                onClick={handleExtendTimer}
+                                style={{ background: '#17a2b8', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                                ⏱️ EXTEND +10s
+                            </button>
+                        )}
+
+                        {/* Emergency */}
+                        <button
+                            onClick={handleEmergencyStop}
+                            style={{ background: '#dc3545', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            🛑 EMERGENCY STOP
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="event-section">
                 <h3>Events</h3>
                 <div className="event-form">
@@ -178,7 +375,87 @@ const AdminPanel = () => {
                         value={newEventStart}
                         onChange={e => setNewEventStart(e.target.value)}
                     />
-                    <button onClick={createEvent}>Create Event</button>
+
+                    {/* Bid Increment Configuration */}
+                    <div style={{ marginTop: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '5px' }}>
+                        <h4>Bid Increment Configuration</h4>
+                        <div style={{ marginBottom: '10px' }}>
+                            <label>
+                                <strong>Base Bid Increment (₹):</strong>
+                                <input
+                                    type="number"
+                                    value={bidIncrement}
+                                    onChange={e => setBidIncrement(e.target.value)}
+                                    placeholder="500000"
+                                    style={{ marginLeft: '10px', width: '150px' }}
+                                />
+                                <small style={{ marginLeft: '10px', color: '#666' }}>
+                                    (₹{(Number(bidIncrement) / 100000).toFixed(2)} Lakhs)
+                                </small>
+                            </label>
+                        </div>
+
+                        <div style={{ marginBottom: '10px' }}>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={usePriceTiers}
+                                    onChange={e => setUsePriceTiers(e.target.checked)}
+                                />
+                                <strong style={{ marginLeft: '5px' }}>Use Dynamic Price Tiers</strong>
+                            </label>
+                        </div>
+
+                        {usePriceTiers && (
+                            <div style={{ marginLeft: '20px' }}>
+                                <p style={{ fontSize: '14px', color: '#666' }}>
+                                    Define bid increments based on price ranges (e.g., lower increment for lower prices)
+                                </p>
+                                {priceTiers.map((tier, index) => (
+                                    <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 'bold' }}>Tier {index + 1}:</span>
+                                        <input
+                                            type="number"
+                                            placeholder="Min Price"
+                                            value={tier.minPrice}
+                                            onChange={e => updatePriceTier(index, 'minPrice', e.target.value)}
+                                            style={{ width: '120px' }}
+                                        />
+                                        <span>to</span>
+                                        <input
+                                            type="number"
+                                            placeholder="Max Price"
+                                            value={tier.maxPrice}
+                                            onChange={e => updatePriceTier(index, 'maxPrice', e.target.value)}
+                                            style={{ width: '120px' }}
+                                        />
+                                        <span>=</span>
+                                        <input
+                                            type="number"
+                                            placeholder="Increment"
+                                            value={tier.increment}
+                                            onChange={e => updatePriceTier(index, 'increment', e.target.value)}
+                                            style={{ width: '120px' }}
+                                        />
+                                        <button
+                                            onClick={() => removePriceTier(index)}
+                                            style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '3px', cursor: 'pointer' }}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={addPriceTier}
+                                    style={{ background: '#28a745', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '3px', cursor: 'pointer', marginTop: '5px' }}
+                                >
+                                    + Add Tier
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <button onClick={createEvent} style={{ marginTop: '15px' }}>Create Event</button>
                 </div>
                 <ul className="event-list">
                     {events.map(event => (

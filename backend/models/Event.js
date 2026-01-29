@@ -12,7 +12,21 @@ const eventSchema = new mongoose.Schema({
         allRounder: { type: Number, default: 3 },
         wicketkeeper: { type: Number, default: 2 }
     },
-    isActive: { type: Boolean, default: false }
+    isActive: { type: Boolean, default: false },
+    bidIncrement: {
+        type: Number,
+        required: true,
+        default: 500000
+    },
+    usePriceTiers: {
+        type: Boolean,
+        default: false
+    },
+    priceTiers: [{
+        minPrice: { type: Number, required: true },
+        maxPrice: { type: Number, required: true },
+        increment: { type: Number, required: true }
+    }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Event', eventSchema);
