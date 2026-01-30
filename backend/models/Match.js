@@ -10,13 +10,13 @@ const matchSchema = new mongoose.Schema({
     homeTeam: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Team',
-        required: true
+        required: null
     },
 
     awayTeam: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Team',
-        required: true
+        required: null
     },
 
     // Auto-assigned between startDate → endDate
