@@ -19,6 +19,10 @@ const Schedule = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [tournamentType, setTournamentType] = useState("league");
+  const [knockoutCount, setKnockoutCount] = useState(4);
+  const [editingMatchId, setEditingMatchId] = useState(null);
+  const [editFormData, setEditFormData] = useState({ venue: "", date: "", timeSlot: "" });
   const [socket] = useState(() => io(BACKEND_URL, { auth: { token } }));
 
   const eventId = selectedEventId || activeEvent?._id;
@@ -91,6 +95,48 @@ const Schedule = () => {
     return () => socket.off("schedule:refresh");
   }, [eventId, fetchMatches, socket]);
 
+  const deleteMatch = async (matchId) => {
+    if (!window.confirm("Are you sure you want to delete this match?")) return;
+    try {
+      await axios.delete(`${BACKEND_URL}/api/schedule/${matchId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      socket.emit("schedule:update", eventId);
+      await fetchMatches(eventId);
+    } catch (err) {
+      alert("Failed to delete match");
+    }
+  };
+
+  const startEdit = (match) => {
+    setEditingMatchId(match._id);
+    setEditFormData({
+      venue: match.venue,
+      date: match.startTime ? new Date(match.startTime).toISOString().split("T")[0] : "",
+      timeSlot: match.timeSlot,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingMatchId(null);
+    setEditFormData({ venue: "", date: "", timeSlot: "" });
+  };
+
+  const saveEdit = async (matchId) => {
+    try {
+      await axios.put(
+        `${BACKEND_URL}/api/schedule/${matchId}`,
+        editFormData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setEditingMatchId(null);
+      socket.emit("schedule:update", eventId);
+      await fetchMatches(eventId);
+    } catch (err) {
+      alert("Failed to update match");
+    }
+  };
+
   const generateSchedule = async () => {
     if (!isAdmin) return alert("Admin only");
     if (!eventId) return alert("Select an event");
@@ -108,6 +154,8 @@ const Schedule = () => {
           venue: venue.trim(),
           startDate,
           endDate,
+          tournamentType,
+          knockoutTeamsCount: Number(knockoutCount)
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -191,6 +239,29 @@ const Schedule = () => {
             <div className="schedule-generate-card">
               <h3>Generate schedule (Admin)</h3>
               <div className="schedule-generate-form">
+                <div className="schedule-form-row">
+                  <select
+                    value={tournamentType}
+                    onChange={(e) => setTournamentType(e.target.value)}
+                    className="schedule-input"
+                  >
+                    <option value="league">League Only</option>
+                    <option value="knockout">Knockout Only</option>
+                    <option value="hybrid">League + Knockout</option>
+                  </select>
+                  {tournamentType !== "league" && (
+                    <select
+                      value={knockoutCount}
+                      onChange={(e) => setKnockoutCount(e.target.value)}
+                      className="schedule-input"
+                      title="Number of teams qualifying for knockout"
+                    >
+                      <option value="2">Top 2 (Final)</option>
+                      <option value="4">Top 4 (Semi-Finals)</option>
+                      <option value="8">Top 8 (Quarter-Finals)</option>
+                    </select>
+                  )}
+                </div>
                 <input
                   placeholder="Venue / Ground"
                   value={venue}
@@ -236,6 +307,7 @@ const Schedule = () => {
                       <th>Venue</th>
                       <th>Date</th>
                       <th>Time Slot</th>
+                      {isAdmin && <th>Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -247,9 +319,56 @@ const Schedule = () => {
                           <strong>{m.awayTeam?.teamName ?? "TBD"}</strong>
                         </td>
                         <td>{m.stage || "League"}</td>
-                        <td>{m.venue || "—"}</td>
-                        <td>{m.startTime ? new Date(m.startTime).toLocaleDateString() : "—"}</td>
-                        <td>{m.timeSlot || "—"}</td>
+                        
+                        {editingMatchId === m._id ? (
+                          <>
+                            <td>
+                              <input
+                                className="schedule-edit-input"
+                                value={editFormData.venue}
+                                onChange={(e) => setEditFormData({ ...editFormData, venue: e.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="date"
+                                className="schedule-edit-input"
+                                value={editFormData.date}
+                                onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <select
+                                className="schedule-edit-input"
+                                value={editFormData.timeSlot}
+                                onChange={(e) => setEditFormData({ ...editFormData, timeSlot: e.target.value })}
+                              >
+                                <option value="Morning (9–12)">Morning (9–12)</option>
+                                <option value="Afternoon (1–4)">Afternoon (1–4)</option>
+                                <option value="Evening (5–8)">Evening (5–8)</option>
+                                <option value="Night (8–11)">Night (8–11)</option>
+                              </select>
+                            </td>
+                            {isAdmin && (
+                              <td className="schedule-actions">
+                                <button className="schedule-save-btn" onClick={() => saveEdit(m._id)}>Save</button>
+                                <button className="schedule-cancel-btn" onClick={cancelEdit}>Cancel</button>
+                              </td>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <td>{m.venue || "—"}</td>
+                            <td>{m.startTime ? new Date(m.startTime).toLocaleDateString() : "—"}</td>
+                            <td>{m.timeSlot || "—"}</td>
+                            {isAdmin && (
+                              <td className="schedule-actions">
+                                <button className="schedule-edit-btn" onClick={() => startEdit(m)}>Edit</button>
+                                <button className="schedule-delete-btn" onClick={() => deleteMatch(m._id)}>Delete</button>
+                              </td>
+                            )}
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
