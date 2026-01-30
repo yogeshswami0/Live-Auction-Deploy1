@@ -444,7 +444,7 @@ io.on('connection', (socket) => {
     socket.on("admin_start_auction", async (playerId) => {
         if (!socket.user || socket.user.role !== 'Admin') return socket.emit('error', { message: 'Unauthorized' });
         if (auctionState.isActive) return socket.emit('error', { message: 'Another auction is already active' });
-        const player = await Player.findById(playerId).populate('event');
+        const player = await Player.findById(playerId).populate('event').lean();
         const activeEvent = await getActiveEvent();
         if (!player) return socket.emit('error', { message: 'Player not found' });
         if (player.status !== 'Approved') return socket.emit('error', { message: 'Player must be Approved before starting auction' });
@@ -534,7 +534,8 @@ io.on('connection', (socket) => {
         if (!team || team.remainingBudget < bidAmount) return;
         if (socket.user.role !== 'Admin' && team.owner.toString() !== socket.user.id) return socket.emit('error', { message: 'You do not own this team' });
         if (!auctionState.currentPlayer || !auctionState.currentPlayer.event) return;
-        if (!team.event || team.event.toString() !== auctionState.currentPlayer.event.toString()) return;
+        const currentEventId = auctionState.currentPlayer.event._id || auctionState.currentPlayer.event;
+        if (!team.event || team.event.toString() !== currentEventId.toString()) return;
         const currentRole = auctionState.currentPlayer.role;
         const event = await Event.findById(team.event);
         let roleLimit = null;
@@ -555,7 +556,7 @@ io.on('connection', (socket) => {
         auctionState.bidHistory.unshift({ bidder: teamName, amount: bidAmount, time: new Date().toLocaleTimeString() });
         if (auctionState.timer < 10) auctionState.timer = 20;
         await Bid.create({
-            event: auctionState.currentPlayer.event,
+            event: currentEventId,
             player: auctionState.currentPlayer._id,
             team: team._id,
             amount: bidAmount
