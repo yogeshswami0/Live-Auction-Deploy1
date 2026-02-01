@@ -178,14 +178,16 @@ useEffect(() => {
         fetchPlayerStatus();
     }, []);
 
-    const handlePlaceBid = () => {
+    const bidIncrements = [500000, 1000000, 2000000, 5000000, 10000000, 20000000];
+
+    const handlePlaceBid = (increment) => {
         if (!ownerTeam) return alert("Only Team Owners with a registered team can bid!");
-        const nextBid = highestBid + 500000;
+        const bidAmount = highestBid + increment;
 
         socketRef.current.emit("place_bid", {
             teamId: ownerTeam._id,
             teamName: ownerTeam.teamName,
-            bidAmount: nextBid
+            bidAmount: bidAmount
         });
     };
 
@@ -290,7 +292,7 @@ useEffect(() => {
                         <div className="auction-budget-strip">
                             <span className="auction-budget-label">Your budget</span>
                             <span className="auction-budget-value">₹{ownerTeam.remainingBudget?.toLocaleString() ?? 0}</span>
-                            <span className="auction-budget-hint">Next bid: ₹{nextBidAmount.toLocaleString()}</span>
+                            <span className="auction-budget-hint">Select your bid increment</span>
                         </div>
                     )}
                     <div className="auction-card-section">
@@ -332,9 +334,53 @@ useEffect(() => {
                                 <p>Highest Bidder: <strong>{highestBidder}</strong></p>
                             </div>
                             {user?.role === 'Owner' && (
-                                <button className="bid-btn" onClick={handlePlaceBid} disabled={isBidDisabled}>
-                                    {isBidDisabled ? 'Bid Not Available' : `Bid ₹${nextBidAmount.toLocaleString()}`}
-                                </button>
+                                <div className="bid-buttons-container">
+                                    {bidIncrements.map((increment, index) => {
+                                        const bidAmount = highestBid + increment;
+                                        let isDisabled = false;
+                                        if (!user || user.role !== 'Owner') {
+                                            isDisabled = true;
+                                        } else if (!ownerTeam) {
+                                            isDisabled = true;
+                                        } else {
+                                            if (typeof ownerTeam.remainingBudget === 'number' && ownerTeam.remainingBudget < bidAmount) {
+                                                isDisabled = true;
+                                            }
+                                            if (!isDisabled && eventConfig && eventConfig.roleLimits && Array.isArray(ownerTeam.players) && player && player.role) {
+                                                const hasRoleData = ownerTeam.players.length > 0 && typeof ownerTeam.players[0] === 'object' && ownerTeam.players[0] !== null && Object.prototype.hasOwnProperty.call(ownerTeam.players[0], 'role');
+                                                if (hasRoleData) {
+                                                    const roleLimits = eventConfig.roleLimits;
+                                                    let roleLimit = null;
+                                                    if (player.role === 'Batsman') roleLimit = roleLimits.batsman;
+                                                    if (player.role === 'Bowler') roleLimit = roleLimits.bowler;
+                                                    if (player.role === 'All-Rounder') roleLimit = roleLimits.allRounder;
+                                                    if (player.role === 'Wicketkeeper') roleLimit = roleLimits.wicketkeeper;
+                                                    if (roleLimit && roleLimit > 0) {
+                                                        const currentRoleCount = ownerTeam.players.filter(p => p.role === player.role).length;
+                                                        if (currentRoleCount >= roleLimit) {
+                                                            isDisabled = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        const formatIncrement = (inc) => {
+                                            if (inc >= 10000000) return `${inc / 10000000}Cr`;
+                                            if (inc >= 100000) return `${inc / 100000}L`;
+                                            return `₹${inc.toLocaleString()}`;
+                                        };
+                                        return (
+                                            <button
+                                                key={index}
+                                                className="bid-btn"
+                                                onClick={() => handlePlaceBid(increment)}
+                                                disabled={isDisabled}
+                                            >
+                                                {isDisabled ? 'N/A' : `+${formatIncrement(increment)}`}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             )}
                         </div>
                     </div>

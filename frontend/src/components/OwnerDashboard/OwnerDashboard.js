@@ -8,6 +8,19 @@ const OwnerDashboard = () => {
     const [matches, setMatches] = useState([]);
     const [scoutingPlayers, setScoutingPlayers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedFilters, setSelectedFilters] = useState([]);
+    const [captain, setCaptain] = useState(() => {
+        const saved = localStorage.getItem('captain');
+        return saved ? JSON.parse(saved) : null;
+    });
+    const [viceCaptain, setViceCaptain] = useState(() => {
+        const saved = localStorage.getItem('viceCaptain');
+        return saved ? JSON.parse(saved) : null;
+    });
+    const [playingTeam, setPlayingTeam] = useState(() => {
+        const saved = localStorage.getItem('playingTeam');
+        return saved ? JSON.parse(saved) : [];
+    });
 
     const userString = localStorage.getItem('user');
     const token = localStorage.getItem('token');
@@ -62,49 +75,47 @@ const OwnerDashboard = () => {
         }
     };
 
+    const getFilteredPlayers = (players) => {
+        if (selectedFilters.length === 0) return players;
+        return players.filter(player => selectedFilters.includes(player.role));
+    };
+
     const categorizePlayers = (players) => {
-        if (!Array.isArray(players) || players.length === 0) {
-            return {
-                Captain: [],
-                Batsmen: [],
-                Bowlers: [],
-                AllRounders: [],
-                Wicketkeepers: [],
-                Extra: []
-            };
-        }
-        let captainIndex = 0;
-        let maxRating = -Infinity;
-        players.forEach((player, index) => {
-            const rating = player.stats && typeof player.stats.rating === 'number' ? player.stats.rating : 0;
-            if (rating > maxRating) {
-                maxRating = rating;
-                captainIndex = index;
-            }
-        });
-        const groups = {
-            Captain: [],
+        const filteredPlayers = getFilteredPlayers(players);
+        const defaultGroups = {
             Batsmen: [],
             Bowlers: [],
             AllRounders: [],
             Wicketkeepers: [],
             Extra: []
         };
-        players.forEach((player, index) => {
-            if (index === captainIndex) {
-                groups.Captain.push(player);
-            } else if (player.role === 'Batsman') {
-                groups.Batsmen.push(player);
-            } else if (player.role === 'Bowler') {
-                groups.Bowlers.push(player);
-            } else if (player.role === 'All-Rounder') {
-                groups.AllRounders.push(player);
-            } else if (player.role === 'Wicketkeeper') {
-                groups.Wicketkeepers.push(player);
-            } else {
-                groups.Extra.push(player);
+
+        if (!Array.isArray(filteredPlayers) || filteredPlayers.length === 0) {
+            return defaultGroups;
+        }
+
+        // Categorize based on role
+        const groups = { ...defaultGroups };
+
+        filteredPlayers.forEach((player) => {
+            switch (player.role) {
+                case 'Batsman':
+                    groups.Batsmen.push(player);
+                    break;
+                case 'Bowler':
+                    groups.Bowlers.push(player);
+                    break;
+                case 'All-Rounder':
+                    groups.AllRounders.push(player);
+                    break;
+                case 'Wicketkeeper':
+                    groups.Wicketkeepers.push(player);
+                    break;
+                default:
+                    groups.Extra.push(player);
             }
         });
+
         return groups;
     };
 
@@ -166,6 +177,23 @@ const OwnerDashboard = () => {
             </div>
 
             <h2>Your Squad ({team.players.length})</h2>
+            <div className="squad-filters">
+                {['Batsman', 'Bowler', 'All-Rounder', 'Wicketkeeper'].map(role => (
+                    <button
+                        key={role}
+                        className={`filter-btn ${selectedFilters.includes(role) ? 'active' : ''}`}
+                        onClick={() => {
+                            setSelectedFilters(prev =>
+                                prev.includes(role)
+                                    ? prev.filter(r => r !== role)
+                                    : [...prev, role]
+                            );
+                        }}
+                    >
+                        {role}
+                    </button>
+                ))}
+            </div>
             <div className="squad-categories">
                 {Object.entries(categorized).map(([label, players]) => (
                     players.length > 0 && (
@@ -175,17 +203,126 @@ const OwnerDashboard = () => {
                                 <span className="pill-badge pill-badge-primary">{players.length}</span>
                             </div>
                             <div className="squad-grid">
-                                {players.map(player => (
-                                    <div key={player._id} className="player-mini-card">
-                                        <h4>{player.name}</h4>
-                                        <span>{player.role}</span>
-                                        <strong style={{color: '#27ae60'}}>₹{player.currentPrice.toLocaleString()}</strong>
-                                    </div>
-                                ))}
+                                {players.map(player => {
+                                    const isCaptainSelected = captain?._id === player._id;
+                                    const isViceCaptainSelected = viceCaptain?._id === player._id;
+
+                                    return (
+                                        <div key={player._id} className="player-mini-card">
+                                            <div className="player-card-header">
+                                                <h4>{player.name}</h4>
+                                                <div className="player-tags">
+                                                    {isCaptainSelected && <span className="tag captain">C</span>}
+                                                    {isViceCaptainSelected && <span className="tag vice-captain">VC</span>}
+                                                </div>
+                                            </div>
+                                            <span>{player.role}</span>
+                                            <strong style={{color: '#27ae60'}}>₹{player.currentPrice.toLocaleString()}</strong>
+                                            <div className="player-actions">
+                                                {!isCaptainSelected && !isViceCaptainSelected && (
+                                                    <>
+                                                        <button
+                                                            className="action-btn captain-btn"
+                                                            onClick={() => setCaptain(player)}
+                                                            disabled={captain?._id === player._id}
+                                                        >
+                                                            Set C
+                                                        </button>
+                                                        <button
+                                                            className="action-btn vice-captain-btn"
+                                                            onClick={() => setViceCaptain(player)}
+                                                            disabled={viceCaptain?._id === player._id}
+                                                        >
+                                                            Set VC
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )
                 ))}
+            </div>
+
+            <div className="playing-team-section">
+                <h2>Playing 11 ({playingTeam.length}/11)</h2>
+                {playingTeam.length > 0 && (
+                    <div className="playing-team-grid">
+                        {playingTeam.map(player => {
+                            const isCaptainSelected = captain?._id === player._id;
+                            const isViceCaptainSelected = viceCaptain?._id === player._id;
+
+                            return (
+                                <div key={player._id} className="playing-player-card">
+                                    <div className="player-card-header">
+                                        <h4>{player.name}</h4>
+                                        <div className="player-tags">
+                                            {isCaptainSelected && <span className="tag captain">C</span>}
+                                            {isViceCaptainSelected && <span className="tag vice-captain">VC</span>}
+                                        </div>
+                                    </div>
+                                    <span>{player.role}</span>
+                                    <strong style={{color: '#27ae60'}}>₹{player.currentPrice.toLocaleString()}</strong>
+                                    <div className="player-actions">
+                                        <button
+                                            className="action-btn remove-btn"
+                                            onClick={() => {
+                                                setPlayingTeam(prev => prev.filter(p => p._id !== player._id));
+                                                localStorage.setItem('playingTeam', JSON.stringify(playingTeam.filter(p => p._id !== player._id)));
+                                            }}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <div className="add-player-section">
+                    <h3>Add Players to Playing 11</h3>
+                    <div className="available-players-grid">
+                        {(team.players || []).filter(player => !playingTeam.some(p => p._id === player._id)).map(player => {
+                            const isCaptainSelected = captain?._id === player._id;
+                            const isViceCaptainSelected = viceCaptain?._id === player._id;
+
+                            return (
+                                <div key={player._id} className="available-player-card">
+                                    <div className="player-card-header">
+                                        <h4>{player.name}</h4>
+                                        <div className="player-tags">
+                                            {isCaptainSelected && <span className="tag captain">C</span>}
+                                            {isViceCaptainSelected && <span className="tag vice-captain">VC</span>}
+                                        </div>
+                                    </div>
+                                    <span>{player.role}</span>
+                                    <strong style={{color: '#27ae60'}}>₹{player.currentPrice.toLocaleString()}</strong>
+                                    <div className="player-actions">
+                                        <button
+                                            className="action-btn add-btn"
+                                            onClick={() => {
+                                                if (playingTeam.length < 11) {
+                                                    const newPlayingTeam = [...playingTeam, player];
+                                                    setPlayingTeam(newPlayingTeam);
+                                                    localStorage.setItem('playingTeam', JSON.stringify(newPlayingTeam));
+                                                } else {
+                                                    alert('Playing team can only have 11 players');
+                                                }
+                                            }}
+                                            disabled={playingTeam.length >= 11}
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             {matches.length > 0 && (

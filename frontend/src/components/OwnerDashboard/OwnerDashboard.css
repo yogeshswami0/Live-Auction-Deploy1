@@ -129,6 +129,35 @@
     box-shadow: 0 18px 40px rgba(15,23,42,0.9);
 }
 
+.squad-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    background: rgba(59, 130, 246, 0.1);
+    color: #e5e7eb;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.filter-btn:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.8);
+}
+
+.filter-btn.active {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.9);
+    color: #dbeafe;
+}
+
 .squad-categories {
     display: flex;
     flex-direction: column;
@@ -253,4 +282,130 @@
     gap: 10px;
     font-size: 0.78rem;
     color: #d1fae5;
+}
+
+.playing-team-section {
+    margin-bottom: 30px;
+}
+
+.playing-team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.playing-player-card, .available-player-card {
+    border-radius: 14px;
+    padding: 15px;
+    text-align: center;
+    box-shadow: 0 10px 26px rgba(15,23,42,0.8);
+    border: 1px solid rgba(30,64,175,0.7);
+    background: radial-gradient(circle at 20% 0%, rgba(96,165,250,0.25), rgba(15,23,42,0.98));
+    transition: transform 0.16s ease-out, box-shadow 0.16s ease-out;
+}
+
+.playing-player-card:hover, .available-player-card:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 18px 40px rgba(15,23,42,0.9);
+}
+
+.player-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.player-tags {
+    display: flex;
+    gap: 5px;
+}
+
+.tag {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: white;
+}
+
+.tag.captain {
+    background: #f59e0b;
+}
+
+.tag.vice-captain {
+    background: #8b5cf6;
+}
+
+.player-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.action-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.captain-btn {
+    background: #f59e0b;
+    color: white;
+}
+
+.captain-btn:hover {
+    background: #d97706;
+}
+
+.vice-captain-btn {
+    background: #8b5cf6;
+    color: white;
+}
+
+.vice-captain-btn:hover {
+    background: #7c3aed;
+}
+
+.add-btn {
+    background: #22c55e;
+    color: white;
+}
+
+.add-btn:hover {
+    background: #16a34a;
+}
+
+.remove-btn {
+    background: #ef4444;
+    color: white;
+}
+
+.remove-btn:hover {
+    background: #dc2626;
+}
+
+.add-player-section {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: 16px;
+    background: rgba(34,197,94,0.1);
+    border: 1px solid rgba(34,197,94,0.3);
+}
+
+.add-player-section h3 {
+    margin-bottom: 15px;
+    color: #bbf7d0;
+}
+
+.available-players-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
 }

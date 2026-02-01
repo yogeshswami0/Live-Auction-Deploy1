@@ -30,7 +30,7 @@
 .live-pill-idle {
     background: rgba(148, 163, 184, 0.2);
     color: #94a3b8;
-    border: 1px solid rgba(148, 163, 184, 0.4);
+    border: 2px solid rgba(148, 163, 184, 0.4);
 }
 .live-pill-active {
     background: rgba(239, 68, 68, 0.2);
@@ -49,13 +49,17 @@
     top: 20px;
     right: 20px;
     background: radial-gradient(circle at 30% 0%, #f97316, #ef4444 55%, #b91c1c 100%);
-    color: white;
+    color: rgb(237, 230, 230);
     width: 64px;
     height: 64px;
     line-height: 64px;
     border-radius: 50%;
     font-size: 1.5rem;
     font-weight: 800;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     box-shadow: 0 0 32px rgba(248, 113, 113, 0.55);
     transition: background 0.3s, box-shadow 0.3s;
 }
@@ -70,24 +74,29 @@
 }
 
 .bid-btn {
-    width: 100%;
-    padding: 18px;
-    background: linear-gradient(135deg, #22c55e, #4ade80);
-    color: #052e16;
-    border: none;
+    gap: 3px;
+    justify-content: center;
+    width: 20%;
+    padding: 25px;
+    background: linear-gradient(135deg, #020604, #273a59);
+    color: #d4f5ba;
+    border: solid 2px #686b6d;
     border-radius: 999px;
-    font-size: 1.1rem;
+    font-size: 1.5rem;
     cursor: pointer;
-    margin-top: 24px;
+    margin-top: 50px;
     font-weight: 600;
-    box-shadow: 0 16px 35px rgba(22, 163, 74, 0.35);
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    box-shadow: 0 16px 38px rgba(203, 204, 218, 0.35);
     transform-origin: center;
     transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, filter 0.12s ease-out;
+    
 }
 
 .bid-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 20px 40px rgba(22, 163, 74, 0.5);
+    box-shadow: 0 20px 40px rgba(231, 163, 5, 0.5);
     filter: brightness(1.03);
 }
 
@@ -101,6 +110,20 @@
     opacity: 0.6;
     box-shadow: none;
     filter: grayscale(0.1);
+}
+
+.bid-buttons-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.bid-buttons-container .bid-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
 }
 
 .auction-meta {
@@ -191,7 +214,7 @@
     font-size: 0.9rem;
 }
 
-.history-amount { color: #2ecc71; font-weight: bold; }
+.history-amount { color: #06d942; font-weight: bold; }
 .history-time { color: #95a5a6; }
 
 .auction-container {
@@ -390,7 +413,7 @@
 }
 
 .overlay-sold {
-    background: radial-gradient(circle at top, rgba(22, 163, 74, 0.95), rgba(6, 95, 70, 0.98));
+    background: radial-gradient(circle at top, rgba(64, 127, 222, 0.95), rgba(6, 95, 70, 0.98));
 }
 
 .overlay-unsold {
